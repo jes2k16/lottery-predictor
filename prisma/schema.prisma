@@ -11,7 +11,7 @@ datasource db {
 
 // Lottery Games Table
 model LotteryGame {
-  id          String   @id @default(cuid())
+  id          String   @id @default(cuid()) // CUID for URL-safe, collision-resistant IDs
   name        String   @unique // "6/42", "6/45", "6/49", "6/55", "6/58"
   description String?
   maxNumber   Int      // Maximum number in the range
