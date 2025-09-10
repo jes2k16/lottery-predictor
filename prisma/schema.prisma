@@ -1,0 +1,73 @@
+// Philippine Lottery Prediction Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Lottery Games Table
+model LotteryGame {
+  id          String   @id @default(cuid())
+  name        String   @unique // "6/42", "6/45", "6/49", "6/55", "6/58"
+  description String?
+  maxNumber   Int      // Maximum number in the range
+  numberCount Int      // How many numbers to pick
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  results     LotteryResult[]
+  predictions Prediction[]
+  
+  @@map("lottery_games")
+}
+
+// Lottery Results Table
+model LotteryResult {
+  id         String      @id @default(cuid())
+  gameId     String
+  drawDate   DateTime
+  numbers    Int[]       // Array of winning numbers
+  jackpot    Decimal?    @db.Decimal(15, 2)
+  createdAt  DateTime    @default(now())
+  
+  // Relations
+  game       LotteryGame @relation(fields: [gameId], references: [id])
+  
+  @@unique([gameId, drawDate])
+  @@map("lottery_results")
+}
+
+// Predictions Table
+model Prediction {
+  id           String      @id @default(cuid())
+  gameId       String
+  predictedFor DateTime    // Date this prediction is for
+  numbers      Int[]       // Predicted numbers
+  algorithm    String      // Which algorithm generated this
+  confidence   Float?      // Confidence score (0-1)
+  createdAt    DateTime    @default(now())
+  
+  // Relations
+  game         LotteryGame @relation(fields: [gameId], references: [id])
+  
+  @@map("predictions")
+}
+
+// Statistics Table for caching frequent calculations
+model NumberStatistics {
+  id           String   @id @default(cuid())
+  gameId       String
+  number       Int
+  frequency    Int      @default(0)
+  lastDrawn    DateTime?
+  coldStreak   Int      @default(0) // Days since last drawn
+  hotStreak    Int      @default(0) // Recent frequency
+  updatedAt    DateTime @updatedAt
+  
+  @@unique([gameId, number])
+  @@map("number_statistics")
+}
