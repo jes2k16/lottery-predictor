@@ -9,6 +9,7 @@ import { prisma } from './db'
 import { LotteryResultData, validateLotteryResults } from '@/utils/validation'
 import { scrapePCSOResults } from '@/utils/scraper'
 import { LOTTERY_GAMES } from '@/utils/constants'
+import { numbersToString } from '@/utils/numbers'
 
 export interface ImportResult {
   success: boolean
@@ -154,7 +155,7 @@ async function processBatch(
         data: {
           gameId: game.id,
           drawDate: drawDate,
-          numbers: result.numbers,
+          numbers: numbersToString(result.numbers),
           jackpot: result.jackpot || null
         }
       })

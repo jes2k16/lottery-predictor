@@ -1,12 +1,5 @@
-/**
- * Data Manager Utility
- * 
- * High-level functions for managing lottery data operations
- * including statistics calculation and data aggregation
- */
-
 import { prisma } from '@/lib/db'
-import { LotteryGame, LotteryResult } from '@/types/lottery'
+import { parseNumbers } from '@/utils/numbers'
 
 export interface GameStatistics {
   gameName: string
@@ -31,18 +24,13 @@ export interface SystemStatistics {
   gameStatistics: GameStatistics[]
 }
 
-/**
- * Get comprehensive system statistics
- */
 export async function getSystemStatistics(): Promise<SystemStatistics> {
   try {
     const totalGames = await prisma.lotteryGame.count()
     const totalResults = await prisma.lotteryResult.count()
-    
+
     const jackpotSum = await prisma.lotteryResult.aggregate({
-      _sum: {
-        jackpot: true
-      }
+      _sum: { jackpot: true }
     })
 
     const lastResult = await prisma.lotteryResult.findFirst({
@@ -52,14 +40,12 @@ export async function getSystemStatistics(): Promise<SystemStatistics> {
 
     const games = await prisma.lotteryGame.findMany({
       include: {
-        results: {
-          orderBy: { drawDate: 'desc' }
-        }
+        results: { orderBy: { drawDate: 'desc' } }
       }
     })
 
     const gameStatistics = await Promise.all(
-      games.map(game => calculateGameStatistics(game))
+      games.map((game: any) => calculateGameStatistics(game))
     )
 
     return {
@@ -75,21 +61,14 @@ export async function getSystemStatistics(): Promise<SystemStatistics> {
   }
 }
 
-/**
- * Calculate statistics for a specific game
- */
 export async function calculateGameStatistics(game: any): Promise<GameStatistics> {
   const results = game.results || []
-  
+
   if (results.length === 0) {
     return {
       gameName: game.name,
       totalDraws: 0,
-      dateRange: {
-        earliest: null,
-        latest: null,
-        daysCovered: 0
-      },
+      dateRange: { earliest: null, latest: null, daysCovered: 0 },
       numberFrequency: {},
       hotNumbers: [],
       coldNumbers: [],
@@ -98,44 +77,37 @@ export async function calculateGameStatistics(game: any): Promise<GameStatistics
     }
   }
 
-  // Calculate date range
-  const dates = results.map((r: any) => new Date(r.drawDate)).sort((a, b) => a.getTime() - b.getTime())
+  const dates = results.map((r: any) => new Date(r.drawDate)).sort((a: Date, b: Date) => a.getTime() - b.getTime())
   const earliest = dates[0]
   const latest = dates[dates.length - 1]
   const daysCovered = latest ? Math.ceil((latest.getTime() - earliest.getTime()) / (1000 * 60 * 60 * 24)) : 0
 
-  // Calculate number frequency
   const numberFrequency: { [number: string]: number } = {}
   results.forEach((result: any) => {
-    result.numbers.forEach((num: number) => {
+    const nums = parseNumbers(result.numbers)
+    nums.forEach((num: number) => {
       numberFrequency[num] = (numberFrequency[num] || 0) + 1
     })
   })
 
-  // Get hot and cold numbers (top 10 most/least frequent)
   const sortedNumbers = Object.entries(numberFrequency)
-    .sort(([,a], [,b]) => b - a)
+    .sort(([, a], [, b]) => b - a)
     .map(([num]) => parseInt(num))
 
   const hotNumbers = sortedNumbers.slice(0, 10)
   const coldNumbers = sortedNumbers.slice(-10).reverse()
 
-  // Calculate jackpot statistics
   const jackpots = results
     .map((r: any) => parseFloat(r.jackpot?.toString() || '0'))
-    .filter(j => j > 0)
-  
-  const averageJackpot = jackpots.length > 0 ? jackpots.reduce((a, b) => a + b, 0) / jackpots.length : 0
+    .filter((j: number) => j > 0)
+
+  const averageJackpot = jackpots.length > 0 ? jackpots.reduce((a: number, b: number) => a + b, 0) / jackpots.length : 0
   const largestJackpot = jackpots.length > 0 ? Math.max(...jackpots) : 0
 
   return {
     gameName: game.name,
     totalDraws: results.length,
-    dateRange: {
-      earliest,
-      latest,
-      daysCovered
-    },
+    dateRange: { earliest, latest, daysCovered },
     numberFrequency,
     hotNumbers,
     coldNumbers,
@@ -144,27 +116,20 @@ export async function calculateGameStatistics(game: any): Promise<GameStatistics
   }
 }
 
-/**
- * Get recent lottery results
- */
 export async function getRecentResults(limit: number = 10): Promise<any[]> {
   try {
     const results = await prisma.lotteryResult.findMany({
-      include: {
-        game: true
-      },
-      orderBy: {
-        drawDate: 'desc'
-      },
+      include: { game: true },
+      orderBy: { drawDate: 'desc' },
       take: limit
     })
 
-    return results.map(result => ({
+    return results.map((result: any) => ({
       id: result.id,
       gameName: result.game.name,
       gameDescription: result.game.description,
       drawDate: result.drawDate,
-      numbers: result.numbers,
+      numbers: parseNumbers(result.numbers),
       jackpot: result.jackpot ? parseFloat(result.jackpot.toString()) : null,
       createdAt: result.createdAt
     }))
@@ -174,9 +139,6 @@ export async function getRecentResults(limit: number = 10): Promise<any[]> {
   }
 }
 
-/**
- * Search lottery results with filters
- */
 export async function searchResults(filters: {
   gameType?: string
   startDate?: Date
@@ -209,37 +171,30 @@ export async function searchResults(filters: {
       if (filters.maxJackpot) where.jackpot.lte = filters.maxJackpot
     }
 
-    // Note: Array filtering for numbers would need to be done post-query
-    // as Prisma doesn't have native array contains operations for this use case
-
     const results = await prisma.lotteryResult.findMany({
       where,
-      include: {
-        game: true
-      },
-      orderBy: {
-        drawDate: 'desc'
-      },
+      include: { game: true },
+      orderBy: { drawDate: 'desc' },
       take: Math.min(filters.limit || 50, 200),
       skip: filters.offset || 0
     })
 
     let filteredResults = results
 
-    // Filter by numbers if specified
     if (filters.numbers && filters.numbers.length > 0) {
-      filteredResults = results.filter(result => 
-        filters.numbers!.every(num => result.numbers.includes(num))
-      )
+      filteredResults = results.filter((result: any) => {
+        const nums = parseNumbers(result.numbers)
+        return filters.numbers!.every((num: number) => nums.includes(num))
+      })
     }
 
     return {
-      results: filteredResults.map(result => ({
+      results: filteredResults.map((result: any) => ({
         id: result.id,
         gameName: result.game.name,
         gameDescription: result.game.description,
         drawDate: result.drawDate,
-        numbers: result.numbers,
+        numbers: parseNumbers(result.numbers),
         jackpot: result.jackpot ? parseFloat(result.jackpot.toString()) : null,
         createdAt: result.createdAt
       })),
@@ -251,9 +206,6 @@ export async function searchResults(filters: {
   }
 }
 
-/**
- * Get number analysis for a specific game
- */
 export async function getNumberAnalysis(gameType: string) {
   try {
     const game = await prisma.lotteryGame.findUnique({
@@ -261,7 +213,7 @@ export async function getNumberAnalysis(gameType: string) {
       include: {
         results: {
           orderBy: { drawDate: 'desc' },
-          take: 100 // Analyze last 100 draws
+          take: 100
         }
       }
     })
@@ -271,9 +223,8 @@ export async function getNumberAnalysis(gameType: string) {
     }
 
     const analysis = await calculateGameStatistics(game)
-    
-    // Additional analysis for patterns
-    const recentDraws = game.results.slice(0, 20) // Last 20 draws
+
+    const recentDraws = game.results.slice(0, 20)
     const patterns = {
       evenOddRatio: calculateEvenOddRatio(recentDraws),
       highLowRatio: calculateHighLowRatio(recentDraws, game.maxNumber),
@@ -295,18 +246,18 @@ export async function getNumberAnalysis(gameType: string) {
   }
 }
 
-// Helper functions for pattern analysis
 function calculateEvenOddRatio(results: any[]) {
   let evenCount = 0
   let oddCount = 0
-  
-  results.forEach(result => {
-    result.numbers.forEach((num: number) => {
+
+  results.forEach((result: any) => {
+    const nums = parseNumbers(result.numbers)
+    nums.forEach((num: number) => {
       if (num % 2 === 0) evenCount++
       else oddCount++
     })
   })
-  
+
   const total = evenCount + oddCount
   return {
     even: total > 0 ? (evenCount / total * 100).toFixed(1) : 0,
@@ -318,14 +269,15 @@ function calculateHighLowRatio(results: any[], maxNumber: number) {
   const midpoint = Math.ceil(maxNumber / 2)
   let highCount = 0
   let lowCount = 0
-  
-  results.forEach(result => {
-    result.numbers.forEach((num: number) => {
+
+  results.forEach((result: any) => {
+    const nums = parseNumbers(result.numbers)
+    nums.forEach((num: number) => {
       if (num > midpoint) highCount++
       else lowCount++
     })
   })
-  
+
   const total = highCount + lowCount
   return {
     high: total > 0 ? (highCount / total * 100).toFixed(1) : 0,
@@ -335,16 +287,17 @@ function calculateHighLowRatio(results: any[], maxNumber: number) {
 
 function findConsecutivePatterns(results: any[]) {
   let consecutiveCount = 0
-  
-  results.forEach(result => {
-    const sorted = [...result.numbers].sort((a, b) => a - b)
+
+  results.forEach((result: any) => {
+    const nums = parseNumbers(result.numbers)
+    const sorted = [...nums].sort((a, b) => a - b)
     for (let i = 0; i < sorted.length - 1; i++) {
       if (sorted[i + 1] === sorted[i] + 1) {
         consecutiveCount++
       }
     }
   })
-  
+
   return {
     frequency: consecutiveCount,
     percentage: results.length > 0 ? (consecutiveCount / (results.length * 5) * 100).toFixed(1) : 0
@@ -353,14 +306,15 @@ function findConsecutivePatterns(results: any[]) {
 
 function calculateNumberGaps(results: any[], maxNumber: number) {
   const allNumbers = Array.from({ length: maxNumber }, (_, i) => i + 1)
-  const drawnNumbers = new Set()
-  
-  results.forEach(result => {
-    result.numbers.forEach((num: number) => drawnNumbers.add(num))
+  const drawnNumbers = new Set<number>()
+
+  results.forEach((result: any) => {
+    const nums = parseNumbers(result.numbers)
+    nums.forEach((num: number) => drawnNumbers.add(num))
   })
-  
+
   const gaps = allNumbers.filter(num => !drawnNumbers.has(num))
-  
+
   return {
     missingNumbers: gaps,
     missingCount: gaps.length,

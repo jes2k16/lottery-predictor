@@ -8,7 +8,7 @@ A modern web application built with NextJS and PostgreSQL that analyzes 25+ year
 - **Multiple Game Support**: 6/42, 6/45, 6/49, 6/55, 6/58 lottery games
 - **Prediction Algorithms**: Multiple statistical approaches for number prediction
 - **Performance Tracking**: Compare predictions vs actual results
-- **Real-time Updates**: Weekly automated data collection
+- **On-demand Updates**: Update upon request
 - **Modern UI**: Beautiful, responsive interface built with Tailwind CSS
 
 ## 🛠 Tech Stack

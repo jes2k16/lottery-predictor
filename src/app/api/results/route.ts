@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { numbersToString, parseNumbers } from '@/utils/numbers'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,9 +11,8 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
 
-    // Build where clause
     const where: any = {}
-    
+
     if (gameType) {
       const game = await prisma.lotteryGame.findUnique({
         where: { name: gameType }
@@ -23,43 +23,30 @@ export async function GET(request: NextRequest) {
     }
 
     if (startDate && endDate) {
-      where.drawDate = {
-        gte: new Date(startDate),
-        lte: new Date(endDate)
-      }
+      where.drawDate = { gte: new Date(startDate), lte: new Date(endDate) }
     } else if (startDate) {
-      where.drawDate = {
-        gte: new Date(startDate)
-      }
+      where.drawDate = { gte: new Date(startDate) }
     } else if (endDate) {
-      where.drawDate = {
-        lte: new Date(endDate)
-      }
+      where.drawDate = { lte: new Date(endDate) }
     }
 
-    // Get results with game information
     const results = await prisma.lotteryResult.findMany({
       where,
-      include: {
-        game: true
-      },
-      orderBy: {
-        drawDate: 'desc'
-      },
-      take: Math.min(limit, 200), // Max 200 results per request
+      include: { game: true },
+      orderBy: { drawDate: 'desc' },
+      take: Math.min(limit, 200),
       skip: offset
     })
 
-    // Get total count for pagination
     const total = await prisma.lotteryResult.count({ where })
 
     return NextResponse.json({
-      results: results.map(result => ({
+      results: results.map((result: any) => ({
         id: result.id,
         gameName: result.game.name,
         gameDescription: result.game.description,
         drawDate: result.drawDate,
-        numbers: result.numbers,
+        numbers: parseNumbers(result.numbers),
         jackpot: result.jackpot ? parseFloat(result.jackpot.toString()) : null,
         createdAt: result.createdAt
       })),
@@ -84,7 +71,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { gameName, drawDate, numbers, jackpot } = body
 
-    // Validate required fields
     if (!gameName || !drawDate || !numbers || !Array.isArray(numbers)) {
       return NextResponse.json(
         { error: 'gameName, drawDate, and numbers array are required' },
@@ -92,7 +78,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Find the game
     const game = await prisma.lotteryGame.findUnique({
       where: { name: gameName }
     })
@@ -104,17 +89,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create the result
     const result = await prisma.lotteryResult.create({
       data: {
         gameId: game.id,
         drawDate: new Date(drawDate),
-        numbers: numbers,
+        numbers: numbersToString(numbers),
         jackpot: jackpot || null
       },
-      include: {
-        game: true
-      }
+      include: { game: true }
     })
 
     return NextResponse.json({
@@ -122,7 +104,7 @@ export async function POST(request: NextRequest) {
       gameName: result.game.name,
       gameDescription: result.game.description,
       drawDate: result.drawDate,
-      numbers: result.numbers,
+      numbers: parseNumbers(result.numbers),
       jackpot: result.jackpot ? parseFloat(result.jackpot.toString()) : null,
       createdAt: result.createdAt
     })

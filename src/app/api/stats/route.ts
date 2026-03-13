@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { parseNumbers } from '@/utils/numbers'
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const gameType = searchParams.get('game')
 
-    // Get overall statistics
     const totalResults = await prisma.lotteryResult.count()
     const totalGames = await prisma.lotteryGame.count()
 
-    // Get game-specific statistics
-    let gameStats = []
+    let gameStats: any[] = []
     if (gameType) {
       const game = await prisma.lotteryGame.findUnique({
         where: { name: gameType },
@@ -46,13 +45,12 @@ export async function GET(request: NextRequest) {
           totalResults: resultCount,
           oldestResult: oldestResult?.drawDate || null,
           latestResult: latestResult?.drawDate || null,
-          dateRange: oldestResult && latestResult 
+          dateRange: oldestResult && latestResult
             ? Math.ceil((latestResult.drawDate.getTime() - oldestResult.drawDate.getTime()) / (1000 * 60 * 60 * 24))
             : 0
         }]
       }
     } else {
-      // Get statistics for all games
       const games = await prisma.lotteryGame.findMany({
         include: {
           _count: {
@@ -61,7 +59,7 @@ export async function GET(request: NextRequest) {
         }
       })
 
-      gameStats = await Promise.all(games.map(async (game) => {
+      gameStats = await Promise.all(games.map(async (game: any) => {
         const oldestResult = await prisma.lotteryResult.findFirst({
           where: { gameId: game.id },
           orderBy: { drawDate: 'asc' }
@@ -80,21 +78,16 @@ export async function GET(request: NextRequest) {
           totalResults: game._count.results,
           oldestResult: oldestResult?.drawDate || null,
           latestResult: latestResult?.drawDate || null,
-          dateRange: oldestResult && latestResult 
+          dateRange: oldestResult && latestResult
             ? Math.ceil((latestResult.drawDate.getTime() - oldestResult.drawDate.getTime()) / (1000 * 60 * 60 * 24))
             : 0
         }
       }))
     }
 
-    // Get recent activity
     const recentResults = await prisma.lotteryResult.findMany({
-      include: {
-        game: true
-      },
-      orderBy: {
-        createdAt: 'desc'
-      },
+      include: { game: true },
+      orderBy: { createdAt: 'desc' },
       take: 5
     })
 
@@ -105,10 +98,10 @@ export async function GET(request: NextRequest) {
         lastUpdated: recentResults[0]?.createdAt || null
       },
       games: gameStats,
-      recentActivity: recentResults.map(result => ({
+      recentActivity: recentResults.map((result: any) => ({
         gameName: result.game.name,
         drawDate: result.drawDate,
-        numbers: result.numbers,
+        numbers: parseNumbers(result.numbers),
         jackpot: result.jackpot ? parseFloat(result.jackpot.toString()) : null,
         addedAt: result.createdAt
       }))
